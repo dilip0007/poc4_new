@@ -1,0 +1,87 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # --- CI Stages ---
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm install
+
+  test:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: npm test
+
+  security:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: SonarQube Analysis
+        uses: SonarSource/sonarqube-scan-action@v1
+        with:
+          sonarToken: ${{ secrets.SONARQUBE_TOKEN }}
+          sonarHostUrl: ${{ secrets.SONARQUBE_URL }}
+          sonarOrganization: ${{ secrets.SONAR_ORGANIZATION }}
+
+      - name: SCA (npm audit)
+        run: npm audit
+
+  # --- CD Stages ---
+  package:
+    runs-on: ubuntu-latest
+    needs: security
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Build and Push Docker Image
+        run: |
+          docker build -t ${{ secrets.ECR_REPOSITORY }}:latest .
+          docker push ${{ secrets.ECR_REPOSITORY }}:latest
+
+  deploy:
+    runs-on: self-hosted  # Use self-hosted runner
+    needs: package
+    permissions:
+      id-token: write  # Required for OIDC
+      contents: read
+    steps:
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster my-cluster \
+            --service my-service \
+            --force-new-deployment \
+            --region ${{ secrets.AWS_REGION }}

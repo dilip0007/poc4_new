@@ -1,0 +1,21 @@
+{
+  "family": "my-task",
+  "networkMode": "awsvpc",
+  "containerDefinitions": [
+    {
+      "name": "my-container",
+      "image": "dilipnigam007/your-image:latest",
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000
+        }
+      ],
+      "essential": true
+    }
+  ],
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "ecsTaskExecutionRole"
+}
